@@ -1,6 +1,6 @@
 # better-auth-flags: v0.1 design
 
-Status: **proposal, for review.** Nothing below is implemented beyond the placeholder plugin.
+Status: **accepted for v0.1** (decisions from Seth, Oct 18 2026, are recorded under [Decisions](#decisions)).
 
 ## Why
 
@@ -19,7 +19,7 @@ One npm package, `@thecomputerplumbers/better-auth-flags`, three entries:
 | `./client` | `featureFlagsClient(options)` for `createAuthClient`              |
 | `./react`  | `FlagsProvider` (optional), `useFlag`, `useFlags`                 |
 
-Peer deps: `better-auth ^1.7`, `react` (optional). No runtime dependencies.
+Peer deps: `better-auth ^1.7`, `zod ^4` (already required by better-auth), `react` (optional). No other runtime dependencies.
 
 ## Data model
 
@@ -45,7 +45,11 @@ Declared through the plugin's `schema` field, so `npx @better-auth/cli generate|
 
 **`featureFlagRule`**: `flagId`, `priority` (int, lower first), `conditions` (JSON, see below), `value` (JSON) or `rolloutPercentage`, `enabled`.
 
-No audit/evaluation-log table in v0.1 (see open questions).
+**`featureFlagAudit`**: `flagId?`, `flagKey`, `action` (`flag.create` \| `flag.update` \| `flag.delete` \| `override.set` \| `override.remove` \| `rule.create` \| `rule.update` \| `rule.delete`), `actorId` (user id or null for server calls), `before` (JSON?), `after` (JSON?), `createdAt`. Written on every admin mutation, in the same request. Rows are never updated or deleted by the plugin, and `flagKey` is denormalised so history survives flag deletion.
+
+Ids are left to the adapter, so `advanced.database.generateId: false` with database-generated ids (as Versal uses with Postgres `uuidv7()`) works.
+
+There is no evaluation-log table; use `onEvaluate` instead.
 
 ## Evaluation
 
@@ -58,13 +62,15 @@ No audit/evaluation-log table in v0.1 (see open questions).
 5. **Percentage rollout**: `bucket(flagKey, subjectId) < pct * 100`, where `bucket` is 32-bit FNV-1a mod 10000 over `"<key>:<subjectId>"`; subject is the user id or org id per `rolloutBy`. For multivariate flags, buckets map onto cumulative variant weights. Raising the percentage never removes anyone already in. (`"rollout"`)
 6. **Default** (`"default"`).
 
-Anonymous sessions: no user, so steps 2, 3 and user-based rollout are skipped; rules can still match on request attributes passed explicitly.
+Anonymous sessions: no user, so steps 2, 3 and rollouts are skipped (a rollout falls through to the default); rules can still match on `custom.*` attributes. Stable anonymous-id rollouts are out of scope.
+
+**`onEvaluate` hook:** `options.onEvaluate?: (event: { key, value, reason, userId, organizationId, ctx }) => void | Promise<void>`, called once per evaluated flag (bootstrap included). It is fire-and-forget: errors are caught and logged, and it never changes the result or blocks the response.
 
 **Rule conditions** (v0.1): `{ attribute, operator, value }` where attribute is one of `user.id`, `user.email`, `user.emailDomain`, `user.role`, `user.createdAt`, `organization.id`, `organization.slug`, `member.role`, or `custom.<name>` (supplied by an `options.context(ctx)` hook). Operators: `eq`, `neq`, `in`, `notIn`, `contains`, `startsWith`, `endsWith`, `gt`, `gte`, `lt`, `lte`. No regex in v0.1 (ReDoS).
 
 ## Organization plugin awareness
 
-With `organization: true` (auto-detected when the `organization` plugin is registered), the active org from the session feeds org overrides, `rolloutBy: "organization"`, and `organization.*` / `member.role` attributes. Without it, those steps are skipped. Optional `organization.adminRoles` (default `["owner", "admin"]`) allows org admins to manage _their own org's_ overrides only.
+With `organization: true` (auto-detected when the `organization` plugin is registered), the active org from the session feeds org overrides, `rolloutBy: "organization"`, and `organization.*` / `member.role` attributes. Without it, those steps are skipped. Org owners and admins get no flag management rights; only site admins manage flags (see Admin gating).
 
 ## Endpoints
 
@@ -76,9 +82,9 @@ Session (any signed-in or anonymous user):
 | `GET /flags/evaluate?key=`   | `evaluateFlag`   | one flag, with `reason`                                                                    |
 | `POST /flags/evaluate-batch` | `evaluateFlags`  | subset by keys                                                                             |
 
-Admin (gated, see below): CRUD for flags (`/flags/admin/create|update|delete|list|get`), overrides (`/flags/admin/override/set|remove|list`), rules (`/flags/admin/rule/create|update|delete|reorder`).
+Admin (gated, see below): CRUD for flags (`/flags/admin/create|update|delete|list|get`), overrides (`/flags/admin/override/set|remove|list`), rules (`/flags/admin/rule/create|update|delete`), and the audit log (`GET /flags/admin/audit?flagKey=&actorId=&limit=&offset=`, newest first).
 
-**Admin gating:** default uses the `admin` plugin: the user's role is in `admin`'s `adminRoles` (or has the `featureFlags: ["manage"]` permission when an access-control config is used). Otherwise `options.canManage(ctx) => boolean` must be supplied; with neither, admin endpoints return 403. All admin endpoints are `requireHeaders`/session-protected and also callable server-side via `auth.api.*`.
+**Admin gating (site admins only):** when the `admin` plugin is registered, a user may manage flags if their `role` (comma-separated roles supported) is in the admin plugin's `adminRoles` (default `["admin"]`) or their id is in `adminUserIds`. `options.canManage(session, ctx) => boolean | Promise<boolean>` replaces that check when supplied. With neither, admin endpoints return 403. Organization roles never grant access. All admin endpoints are `requireHeaders`/session-protected and also callable server-side via `auth.api.*`.
 
 Server helpers: `auth.api.isFlagEnabled`, `auth.api.getFlagValue`, plus a cache: `options.cache` (`{ ttlSeconds }`, in-memory per instance, default 30 s; uses better-auth `secondaryStorage` when configured).
 
@@ -90,7 +96,7 @@ Server helpers: `auth.api.isFlagEnabled`, `auth.api.getFlagValue`, plus a cache:
 - `isEnabled(key)`: boolean, `false` when unknown.
 - `getValue<T>(key, fallback)`.
 - `refresh()`; auto-refresh on session change (sign-in/out, active org switch) via better-auth's `$sessionSignal`.
-- Admin actions are typed through `$InferServerPlugin`.
+- Admin actions are typed through `$InferServerPlugin` (`authClient.flags.admin.*`).
 - SSR: `bootstrap` result can be passed in as `initialFlags` to avoid a request.
 
 **React (`./react`):** `useFlag(key, fallback)` and `useFlags()` read the atom with `useSyncExternalStore`; optional `<FlagsProvider initialFlags>` for SSR hydration. No React import in the core client.
@@ -98,7 +104,7 @@ Server helpers: `auth.api.isFlagEnabled`, `auth.api.getFlagValue`, plus a cache:
 ## Testing
 
 - `evaluate` and `bucket`: exhaustive unit tests (order of precedence, every operator, rollout monotonicity and distribution, multivariate weights, a fixed bucket snapshot to catch hash changes).
-- Integration: a real `betterAuth()` instance using the in-memory/SQLite (better-sqlite3 or node:sqlite) adapter with `admin` and `organization` plugins, exercising endpoints through `auth.api` and `auth.handler`, including admin 403s and org switching.
+- Integration: a real `betterAuth()` instance with `admin` and `organization` plugins, exercising endpoints through `auth.api` and `auth.handler`, including admin 403s, audit rows and org switching. Run against the memory adapter (fast, every `check`) and against Postgres with both the Drizzle adapter (Versal's setup, `provider: "pg"`, `generateId: false`) and the built-in Kysely/pg adapter (`pnpm test:pg`, Docker locally and a Postgres service in CI).
 - Schema: run `@better-auth/cli generate` in CI against a fixture config and snapshot the output.
 - Client: test against `auth.handler` via a custom fetch.
 - CI matrix: better-auth latest 1.7.x, plus a scheduled job against `better-auth@latest` to catch breakage early.
@@ -107,12 +113,14 @@ Server helpers: `auth.api.isFlagEnabled`, `auth.api.getFlagValue`, plus a cache:
 
 Analytics/exposure tracking, A/B result stats, an admin UI, flag dependencies/prerequisites, scheduled changes, regex conditions, OpenFeature provider (good v0.2 candidate).
 
-## Open questions for Seth
+## Decisions
 
-1. **Store values as JSON strings** (portable across all adapters) vs. typed columns? Proposal: JSON strings.
-2. **Who manages flags by default:** admin-plugin role only, or also org owners/admins for their own org's overrides? Proposal: both, the second opt-in.
-3. **Audit log** of flag changes in v0.1, or defer? It's cheap (one table) and useful for prod.
-4. **Exposure/evaluation tracking hook** (`onEvaluate` callback) in v0.1 so you can pipe to PostHog etc.?
-5. **Anonymous users:** should rollouts support a stable anonymous id (cookie) or only signed-in subjects?
-6. **Migration path from kriasoft:** worth a one-off import script, or ignore?
-7. **First consumer:** HiveRunner or Versal? That decides which adapter (Drizzle/Postgres?) the integration tests target first.
+Answered by Seth on Oct 18 2026:
+
+1. Values are stored as JSON strings.
+2. Only site admins manage flags. No org owner/admin self-service.
+3. An audit log of flag changes ships in v0.1 (`featureFlagAudit`, admin endpoint to query it).
+4. An `onEvaluate` hook ships in v0.1.
+5. No anonymous-id rollouts for now.
+6. No migration script from kriasoft.
+7. Versal is the first user: Drizzle adapter on Postgres (Aurora), better-auth 1.7.x with `organization`, `admin`, `twoFactor`, `jwt` and MCP plugins. Integration tests target that first.
