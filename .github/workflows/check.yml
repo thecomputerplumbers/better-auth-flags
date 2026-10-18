@@ -41,3 +41,22 @@ jobs:
       - uses: jdx/mise-action@v4
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:pg
+
+  # TEST: mirror dispatched job results as commit statuses so they count on PRs.
+  report:
+    if: github.event_name == 'workflow_dispatch' && always()
+    needs: [check, postgres]
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          for job in check postgres; do
+            result=$(jq -r --arg j "$job" '.[$j].result' <<<"$RESULTS")
+            state=failure; [ "$result" = success ] && state=success
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state="$state" -f context="$job" -f target_url="$url" -f description="workflow_dispatch: $result"
+          done
