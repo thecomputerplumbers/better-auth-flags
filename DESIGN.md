@@ -1,6 +1,6 @@
 # better-auth-flags: v0.1 design
 
-Status: **accepted for v0.1** (decisions from Seth, Oct 18 2026, are recorded under [Decisions](#decisions)).
+Status: **v0.1 implemented** (unreleased) (decisions from Seth, Oct 18 2026, are recorded under [Decisions](#decisions)).
 
 ## Why
 
@@ -19,7 +19,7 @@ One npm package, `@thecomputerplumbers/better-auth-flags`, three entries:
 | `./client` | `featureFlagsClient(options)` for `createAuthClient`              |
 | `./react`  | `FlagsProvider` (optional), `useFlag`, `useFlags`                 |
 
-Peer deps: `better-auth ^1.7`, `zod ^4` (already required by better-auth), `react` (optional). No other runtime dependencies.
+Peer deps: `better-auth ^1.7`, `zod ^4` and `nanostores ^1` (both already required by better-auth), `react` (optional). No other runtime dependencies.
 
 ## Data model
 
@@ -86,20 +86,22 @@ Admin (gated, see below): CRUD for flags (`/flags/admin/create|update|delete|lis
 
 **Admin gating (site admins only):** when the `admin` plugin is registered, a user may manage flags if their `role` (comma-separated roles supported) is in the admin plugin's `adminRoles` (default `["admin"]`) or their id is in `adminUserIds`. `options.canManage(session, ctx) => boolean | Promise<boolean>` replaces that check when supplied. With neither, admin endpoints return 403. Organization roles never grant access. All admin endpoints are `requireHeaders`/session-protected and also callable server-side via `auth.api.*`.
 
-Server helpers: `auth.api.isFlagEnabled`, `auth.api.getFlagValue`, plus a cache: `options.cache` (`{ ttlSeconds }`, in-memory per instance, default 30 s; uses better-auth `secondaryStorage` when configured).
+Server helpers: `auth.api.isFlagEnabled` (`GET /flags/is-enabled`) and `auth.api.evaluateFlag`. Admin endpoints called server-side through `auth.api` without headers are trusted and audited with a null actor. Cache: `options.cache` (`{ ttlSeconds }`, in-memory per instance, default 30 s, 0 disables); admin writes through the instance clear it. `secondaryStorage` support is deferred to v0.2.
+
+Percentages are integers 0–100 in v0.1 (better-auth `number` columns are integers on Postgres).
 
 ## Client plugin
 
 `featureFlagsClient({ bootstrapOnSession?: true, refreshInterval?: number })` adds `authClient.flags`:
 
-- `bootstrap()` fetches `/flags/bootstrap` into an atom (nanostores, already used by better-auth's client).
+- `load()` (alias `refresh()`) fetches `/flags/bootstrap` into the flags store. `flags.bootstrap()` stays the raw, typed endpoint call, because better-auth infers it from the server route.
 - `isEnabled(key)`: boolean, `false` when unknown.
 - `getValue<T>(key, fallback)`.
-- `refresh()`; auto-refresh on session change (sign-in/out, active org switch) via better-auth's `$sessionSignal`.
+- `getAll()`, `store`; in the browser, loads on start and auto-refreshes on session change (`$sessionSignal`) and on active-org switches or admin writes made through the client. Concurrent loads share one request.
 - Admin actions are typed through `$InferServerPlugin` (`authClient.flags.admin.*`).
 - SSR: `bootstrap` result can be passed in as `initialFlags` to avoid a request.
 
-**React (`./react`):** `useFlag(key, fallback)` and `useFlags()` read the atom with `useSyncExternalStore`; optional `<FlagsProvider initialFlags>` for SSR hydration. No React import in the core client.
+**React (`./react`):** `useFlag(key, fallback)`, `useFlagEnabled(key)` and `useFlags()` read the store with `useSyncExternalStore`; optional `<FlagsProvider initialFlags>` for SSR hydration. No React import in the core client.
 
 ## Testing
 

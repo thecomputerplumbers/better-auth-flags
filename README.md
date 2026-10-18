@@ -2,7 +2,7 @@
 
 Feature flags for [better-auth](https://www.better-auth.com), maintained by The Computer Plumbers.
 
-> **Status: pre-release.** The API below is the plan. See [DESIGN.md](./DESIGN.md) for the proposed v0.1 scope. Nothing is published to npm yet.
+> **Status: v0.1, not yet on npm.** See [DESIGN.md](./DESIGN.md) for the full design.
 
 ## Goals
 
@@ -13,7 +13,7 @@ Feature flags for [better-auth](https://www.better-auth.com), maintained by The 
 - **One request on page load.** `bootstrap` returns every flag for the current session.
 - **Small.** No runtime dependencies; runs on Node, Bun, Deno and Workers.
 
-## Planned API
+## Usage
 
 ```ts
 // auth.ts
@@ -33,7 +33,7 @@ import { featureFlagsClient } from "@thecomputerplumbers/better-auth-flags/clien
 
 export const authClient = createAuthClient({ plugins: [featureFlagsClient()] })
 
-await authClient.flags.bootstrap()
+await authClient.flags.load()
 authClient.flags.isEnabled("new-dashboard") // boolean
 authClient.flags.getValue("checkout-variant", "control") // "control" | "b" | ...
 ```
@@ -47,17 +47,44 @@ const enabled = useFlag("new-dashboard", false)
 
 ```ts
 // Server
-const on = await auth.api.isFlagEnabled({
+const { enabled } = await auth.api.isFlagEnabled({
   headers,
   query: { key: "new-dashboard" },
+})
+
+// Admin (site admins via the admin plugin, or `canManage`); every change is audited
+await auth.api.createFlag({
+  headers,
+  body: {
+    key: "new-dashboard",
+    type: "boolean",
+    defaultValue: false,
+    rolloutPercentage: 10,
+  },
+})
+await auth.api.setFlagOverride({
+  headers,
+  body: {
+    key: "new-dashboard",
+    subjectType: "organization",
+    subjectId: orgId,
+    value: true,
+  },
+})
+const { entries } = await auth.api.listFlagAudit({
+  headers,
+  query: { flagKey: "new-dashboard" },
 })
 ```
 
 ## Development
 
+Then create the tables with `npx @better-auth/cli generate` (Drizzle/Prisma) or `migrate` (built-in Kysely).
+
 ```sh
 mise run setup
-mise run check
+mise run check     # lint, format, typecheck, build, unit + memory-adapter tests
+mise run test:pg   # Postgres integration tests in Docker
 ```
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).
