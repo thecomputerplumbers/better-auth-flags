@@ -34,7 +34,8 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "node --test 'test/**/*.test.ts'",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "test:pg": "node --test --test-concurrency=1 'test-pg/**/*.test.ts'"
   },
   "peerDependencies": {
     "better-auth": "^1.7.0",
@@ -49,10 +50,13 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "better-auth": "^1.7.10",
+    "drizzle-orm": "1.0.0-rc.5-5935859",
     "nanostores": "^1.3.0",
+    "pg": "^8.23.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^7.0.2",

@@ -7,7 +7,8 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "typecheck": "pnpm --filter \"./packages/*\" typecheck",
-    "test": "pnpm --filter \"./packages/*\" test"
+    "test": "pnpm --filter \"./packages/*\" test",
+    "test:pg": "pnpm --filter \"./packages/*\" test:pg"
   },
   "devDependencies": {
     "oxfmt": "^0.71.0",

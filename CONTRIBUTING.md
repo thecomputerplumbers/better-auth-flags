@@ -2,7 +2,7 @@
 
 ## Checks
 
-Run `mise run setup` once, then `mise run check` (lint, format, typecheck, build, tests). CI runs it on every pull request.
+Run `mise run setup` once, then `mise run check` (lint, format, typecheck, build, tests). `mise run test:pg` runs the Postgres integration tests (Drizzle with uuidv7 ids, like Versal, and the built-in Kysely adapter) in a throwaway Docker container; set `DATABASE_URL` and run `pnpm test:pg` to use your own database. CI runs both on every pull request.
 
 ## Pull request titles
 
