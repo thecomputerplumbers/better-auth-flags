@@ -1,6 +1,6 @@
 {
   "name": "@thecomputerplumbers/better-auth-flags",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Feature flags for better-auth: database-backed boolean and multivariate flags with overrides, targeting rules, and percentage rollouts.",
   "license": "MIT",
   "type": "module",
