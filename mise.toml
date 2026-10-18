@@ -1,0 +1,15 @@
+[tools]
+node = "26.8.1"
+pnpm = "12.5.1"
+
+[tasks.setup]
+description = "Install the pinned toolchain and workspace dependencies"
+run = "pnpm install --frozen-lockfile"
+
+[tasks.format]
+description = "Format the workspace"
+run = "pnpm format"
+
+[tasks.check]
+description = "Run the full repository validation suite"
+run = "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test"
