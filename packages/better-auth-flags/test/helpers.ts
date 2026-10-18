@@ -31,7 +31,7 @@ export function makeAuth(
   database: Parameters<typeof betterAuth>[0]["database"] = memoryAdapter(
     memoryDb()
   ),
-  extra: { organization?: boolean; admin?: boolean } = {}
+  extra: { organization?: boolean; admin?: boolean; generateId?: false } = {}
 ) {
   return betterAuth({
     baseURL: BASE_URL,
@@ -40,6 +40,9 @@ export function makeAuth(
     database,
     emailAndPassword: { enabled: true },
     rateLimit: { enabled: false },
+    ...(extra.generateId === false
+      ? { advanced: { database: { generateId: false as const } } }
+      : {}),
     plugins: [
       ...(extra.admin === false ? [] : [admin()]),
       ...(extra.organization === false ? [] : [organization()]),

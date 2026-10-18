@@ -13,3 +13,15 @@ run = "pnpm format"
 [tasks.check]
 description = "Run the full repository validation suite"
 run = "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test"
+
+[tasks."test:pg"]
+description = "Run the Postgres integration tests in a throwaway Docker container"
+run = """
+set -e
+docker rm -f baf-pg-test >/dev/null 2>&1 || true
+docker run -d --rm --name baf-pg-test -e POSTGRES_PASSWORD=pg -p 127.0.0.1:55498:5432 postgres:18 >/dev/null
+trap 'docker rm -f baf-pg-test >/dev/null' EXIT
+until docker exec baf-pg-test pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+sleep 1
+DATABASE_URL=postgres://postgres:pg@127.0.0.1:55498/postgres pnpm test:pg
+"""
