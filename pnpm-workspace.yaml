@@ -1,2 +1,16 @@
 packages:
   - "packages/*"
+# better-auth 1.7.16 is a security release (published 2026-11-03T21:23Z), newer
+# than pnpm's default one-day minimumReleaseAge. Exact versions only; remove
+# these after 2026-11-04T21:24Z, once they are past the age gate.
+minimumReleaseAgeExclude:
+  - "@better-auth/core@1.7.16"
+  - "@better-auth/drizzle-adapter@1.7.16"
+  - "@better-auth/kysely-adapter@1.7.16"
+  - "@better-auth/memory-adapter@1.7.16"
+  - "@better-auth/mongo-adapter@1.7.16"
+  - "@better-auth/prisma-adapter@1.7.16"
+  - "@better-auth/telemetry@1.7.16"
+  - better-auth@1.7.16
+  # Pinned exactly by better-auth 1.7.16 (published 2026-11-03T20:45Z).
+  - better-call@1.4.5
